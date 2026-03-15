@@ -1,0 +1,77 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from datetime import datetime
+
+# --- CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(page_title="OmniFinance App", layout="centered", page_icon="💰")
+
+# --- ESTILO CSS (PARA PARECER APP MOBILE) ---
+st.markdown("""
+    <style>
+    [data-testid="stMetricValue"] { font-size: 24px; color: #1E88E5; }
+    .main { background-color: #F5F7F9; }
+    div.stButton > button {
+        width: 100%; border-radius: 20px; background-color: #1E88E5; color: white; height: 3em;
+    }
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px; background-color: #f0f2f6; border-radius: 10px 10px 0 0; padding: 10px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- LÓGICA DE DADOS ---
+if 'db' not in st.session_state:
+    st.session_state.db = pd.DataFrame(columns=["Data", "Desc", "Cat", "Valor", "Tipo"])
+
+# --- HEADER ---
+st.title("💰 OmniFinance")
+receitas = st.session_state.db[st.session_state.db['Tipo'] == 'Receita']['Valor'].sum()
+despesas = st.session_state.db[st.session_state.db['Tipo'] == 'Despesa']['Valor'].sum()
+saldo = receitas - despesas
+
+# Cards de Resumo Estilo Nubank/Inter
+c1, c2, c3 = st.columns(3)
+c1.metric("Saldo", f"R$ {saldo:,.2f}")
+c2.metric("Entradas", f"R$ {receitas:,.2f}")
+c3.metric("Saídas", f"R$ {despesas:,.2f}", delta=f"-{despesas:,.2f}", delta_color="inverse")
+
+st.divider()
+
+# --- NAVEGAÇÃO POR ABAS ---
+tab1, tab2, tab3 = st.tabs(["➕ Lançar", "📊 Análise", "📜 Histórico"])
+
+with tab1:
+    st.subheader("Novo Registro")
+    with st.form("form_registro", clear_on_submit=True):
+        col_val, col_tipo = st.columns(2)
+        valor = col_val.number_input("Valor (R$)", min_value=0.01, step=0.50)
+        tipo = col_tipo.selectbox("Tipo", ["Despesa", "Receita"])
+        
+        desc = st.text_input("Descrição (Ex: Uber, Almoço...)")
+        cat = st.selectbox("Categoria", ["Alimentação", "Transporte", "Lazer", "Contas", "Saúde", "Salário", "Outros"])
+        
+        if st.form_submit_button("Confirmar Lançamento"):
+            novo = pd.DataFrame([{"Data": datetime.now().strftime("%d/%m/%Y"), "Desc": desc, "Cat": cat, "Valor": valor, "Tipo": tipo}])
+            st.session_state.db = pd.concat([st.session_state.db, novo], ignore_index=True)
+            st.success("Registrado!")
+            st.rerun()
+
+with tab2:
+    st.subheader("Gastos por Categoria")
+    df_gastos = st.session_state.db[st.session_state.db['Tipo'] == 'Despesa']
+    
+    if not df_gastos.empty:
+        fig = px.pie(df_gastos, values='Valor', names='Cat', hole=0.5, 
+                     color_discrete_sequence=px.colors.qualitative.Pastel)
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Nenhum gasto para analisar ainda.")
+
+with tab3:
+    st.subheader("Extrato Detalhado")
+    if not st.session_state.db.empty:
+        st.dataframe(st.session_state.db.iloc[::-1], use_container_width=True, hide_index=True)
+    else:
+        st.write("Lista vazia.")
